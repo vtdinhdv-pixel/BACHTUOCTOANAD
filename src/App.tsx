@@ -21,6 +21,7 @@ import { Sidebar } from './components/Sidebar';
 import { 
   db, auth, handleFirestoreError, OperationType 
 } from './firebase';
+import avatar from './assets/octopus.png';
 import { 
   collection, doc, setDoc, getDocs, onSnapshot, 
   serverTimestamp, query, where, getDoc,
@@ -445,29 +446,29 @@ function App() {
         view === 'student' ? "lg:rounded-l-[48px]" : ""
       )}>
         {/* Header (Inside Right Frame) */}
-        <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100 px-8 py-4">
+        <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100 px-8 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-yellow-400 p-0.5 overflow-hidden border-2 border-white shadow-sm">
-                <img src="https://storage.googleapis.com/aistudio-build-assets/octopus-math-assistant.png" alt="Avatar" className="w-full h-full object-cover" />
+              <div className="w-10 h-10 rounded-full bg-stone-100 p-0 overflow-hidden border border-stone-100 shadow-sm">
+                <img src={avatar} alt="Avatar" className="w-full h-full object-cover scale-110" />
               </div>
               <div>
-                <h1 className="font-bold text-stone-900 text-lg">Bạch Tuộc AD</h1>
+                <h1 className="font-bold text-stone-900 text-base leading-tight">Bạch Tuộc AD</h1>
                 <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <p className="text-[11px] text-emerald-600 font-bold uppercase tracking-wider">Đang hoạt động</p>
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Đang hoạt động</p>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-6">
-              {/* Role Switcher */}
-              <div className="bg-stone-100 p-1 rounded-2xl flex gap-1">
+              {/* Role pill switcher */}
+              <div className="bg-stone-50 p-1.5 rounded-full flex gap-1 border border-stone-100">
                 <button
                   onClick={() => setView('student')}
                   className={cn(
-                    "px-5 py-2 rounded-xl text-sm font-bold transition-all",
-                    view === 'student' ? "bg-white text-emerald-600 shadow-sm" : "text-stone-500 hover:text-stone-700"
+                    "px-6 py-2 rounded-full text-xs font-bold transition-all",
+                    view === 'student' ? "bg-white text-emerald-600 shadow-sm ring-1 ring-stone-100" : "text-stone-400 hover:text-stone-600"
                   )}
                 >
                   Học sinh
@@ -475,8 +476,8 @@ function App() {
                 <button
                   onClick={() => setView('teacher')}
                   className={cn(
-                    "px-5 py-2 rounded-xl text-sm font-bold transition-all",
-                    view === 'teacher' ? "bg-white text-blue-600 shadow-sm" : "text-stone-500 hover:text-stone-700"
+                    "px-6 py-2 rounded-full text-xs font-bold transition-all",
+                    view === 'teacher' ? "bg-white text-blue-600 shadow-sm ring-1 ring-stone-100" : "text-stone-400 hover:text-stone-600"
                   )}
                 >
                   Giáo viên
@@ -484,28 +485,34 @@ function App() {
               </div>
 
               <button 
-                onClick={() => {
-                  setTempId(studentId);
-                  setTempClass(studentClass);
-                  setShowInfoModal(true);
+                onClick={async () => {
+                  if (!user) {
+                    await handleLogin();
+                    // After login, show modal if studentId is missing
+                    if (!studentId) setShowInfoModal(true);
+                  } else {
+                    setTempId(studentId);
+                    setTempClass(studentClass);
+                    setShowInfoModal(true);
+                  }
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-bold transition-all text-sm"
+                className="flex items-center gap-2 px-5 py-2.5 bg-stone-50 hover:bg-stone-100 text-stone-600 border border-stone-100 rounded-full font-bold transition-all text-xs"
               >
                 <User className="w-4 h-4" />
-                {studentId ? `ID: ${studentId}` : 'Đăng nhập'}
+                {studentId ? `ID: ${studentId}` : (user ? 'Thông tin' : 'Đăng nhập')}
               </button>
 
-              <div className="flex items-center gap-3 text-stone-400">
+              <div className="flex items-center gap-2 text-stone-400">
                 <button 
                   onClick={() => exportToDocx(messages)}
-                  className="p-2.5 hover:bg-stone-100 rounded-xl transition-colors group relative" 
-                  title="Tải tài liệu (Word)"
+                  className="p-2 hover:bg-stone-50 rounded-full transition-colors group" 
+                  title="Tải Word"
                 >
-                  <FileText className="w-5 h-5 text-blue-500 group-hover:scale-110 transition-transform" />
+                  <FileText className="w-4.5 h-4.5 text-blue-400 group-hover:text-blue-500" />
                 </button>
-                <button className="p-2.5 hover:bg-stone-100 rounded-xl transition-colors"><Share2 className="w-5 h-5" /></button>
-                <button className="p-2.5 hover:bg-stone-100 rounded-xl transition-colors"><Settings className="w-5 h-5" /></button>
-                <button className="p-2.5 hover:bg-stone-100 rounded-xl transition-colors"><Moon className="w-5 h-5" /></button>
+                <button className="p-2 hover:bg-stone-50 rounded-full transition-colors"><Share2 className="w-4.5 h-4.5" /></button>
+                <button className="p-2 hover:bg-stone-50 rounded-full transition-colors"><Settings className="w-4.5 h-4.5" /></button>
+                <button className="p-2 hover:bg-stone-50 rounded-full transition-colors"><Moon className="w-4.5 h-4.5" /></button>
               </div>
             </div>
           </div>
@@ -528,12 +535,12 @@ function App() {
                         )}
                       >
                         <div className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden border-2 border-white shadow-sm",
-                          msg.role === 'user' ? "bg-stone-200" : "bg-yellow-400"
+                          "w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden border border-stone-100 shadow-sm",
+                          msg.role === 'user' ? "bg-stone-50" : "bg-white"
                         )}>
                           {msg.role === 'user' 
-                            ? <MessageCircle className="w-5 h-5 text-stone-600" /> 
-                            : <img src="https://storage.googleapis.com/aistudio-build-assets/octopus-math-assistant.png" alt="Bot" className="w-full h-full object-cover" />
+                            ? <User className="w-5 h-5 text-stone-400" /> 
+                            : <img src={avatar} alt="Bot" className="w-full h-full object-cover scale-110" />
                           }
                         </div>
                         
@@ -654,8 +661,8 @@ function App() {
 
                   {isLoading && (
                     <div className="flex gap-4">
-                      <div className="w-10 h-10 rounded-full bg-yellow-400 flex items-center justify-center animate-pulse overflow-hidden border-2 border-white shadow-sm">
-                        <img src="https://storage.googleapis.com/aistudio-build-assets/octopus-math-assistant.png" alt="Bot" className="w-full h-full object-cover" />
+                      <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center overflow-hidden border border-stone-100 shadow-sm">
+                        <img src={avatar} alt="Bot" className="w-full h-full object-cover scale-110" />
                       </div>
                       <div className="bg-white border border-stone-100 rounded-[32px] rounded-tl-none px-8 py-5 shadow-sm flex items-center gap-4">
                         <RefreshCw className="w-5 h-5 text-emerald-500 animate-spin" />

@@ -1,6 +1,7 @@
 import React from 'react';
 import { User, GraduationCap, Trophy, Plus } from 'lucide-react';
 import { motion } from 'motion/react';
+import avatar from '../assets/octopus.png';
 
 interface SidebarProps {
   studentId: string;
@@ -20,18 +21,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   handleClearHistory 
 }) => {
   return (
-    <div className="flex flex-col w-full bg-white border border-stone-100 rounded-[40px] p-10 shadow-sm">
+    <div className="flex flex-col w-full bg-white border border-stone-100 rounded-[40px] p-10 shadow-sm h-full">
       <div className="flex flex-col items-center text-center space-y-6">
-        <div className="w-52 h-52 rounded-full border-[10px] border-yellow-400 p-1 bg-white overflow-hidden flex items-center justify-center shadow-inner">
+        <div className="w-56 h-56 rounded-full border-[10px] border-yellow-400 p-0 bg-white overflow-hidden flex items-center justify-center shadow-md">
           <img 
-            src="https://storage.googleapis.com/aistudio-build-assets/octopus-math-assistant.png" 
+            src={avatar} 
             alt="Bạch Tuộc AD" 
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover scale-110"
           />
         </div>
-        <div className="space-y-1">
-          <h2 className="text-[26px] font-bold text-stone-900 tracking-tight">Bạch Tuộc Toán vui nhộn</h2>
-          <p className="text-[#4CAF50] font-medium text-lg">đến từ đại dương xanh</p>
+        <div className="space-y-2">
+          <h2 className="text-[32px] font-black text-stone-900 leading-tight">
+            Bạch Tuộc Toán<br />vui nhộn
+          </h2>
+          <p className="text-[#4CAF50] font-bold text-xl">đến từ đại dương xanh</p>
         </div>
       </div>
 
