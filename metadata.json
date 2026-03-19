@@ -1,0 +1,7 @@
+{
+  "name": "Trợ lý Toán học 6 AI",
+  "description": "Ứng dụng trợ lý học tập môn Toán lớp 6, giúp học sinh tư duy giải toán từng bước thông qua AI.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

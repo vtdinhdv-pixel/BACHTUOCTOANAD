@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: students
+    // Document ID: [studentId] (e.g., HS001)
+    // Fields:
+    //   - id: string (required) - Mã học sinh
+    //   - class: string (required) - Lớp học
+    //   - lastLogin: timestamp (required) - Thời gian đăng nhập cuối
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "vtdinhdv@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['id', 'class', 'lastLogin']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 50 &&
+             data.class is string && data.class.size() > 0 && data.class.size() < 50 &&
+             data.lastLogin is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /students/{studentId} {
+      // Cho phép học sinh đăng ký mã của mình
+      allow create: if isAuthenticated() && isValidStudent(request.resource.data) && request.resource.data.id == studentId;
+      // Chỉ giáo viên (admin) mới được xem danh sách và thống kê
+      allow read: if isAdmin();
+      // Cập nhật thời gian đăng nhập
+      allow update: if isAuthenticated() && isValidStudent(request.resource.data) && request.resource.data.id == studentId;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAuthenticated() && request.auth.uid == userId && !('role' in request.resource.data);
+    }
+    
+    match /test/{doc} {
+      allow read: if true;
+    }
+  }
+}

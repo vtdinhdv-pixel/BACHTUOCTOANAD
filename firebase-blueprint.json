@@ -1,0 +1,21 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Thông tin học sinh đã đăng nhập",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Mã học sinh" },
+        "class": { "type": "string", "description": "Lớp học" },
+        "lastLogin": { "type": "string", "format": "date-time", "description": "Thời gian đăng nhập cuối" }
+      },
+      "required": ["id", "class", "lastLogin"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Danh sách học sinh thực tế"
+    }
+  }
+}
