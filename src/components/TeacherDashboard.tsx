@@ -8,25 +8,42 @@ interface TeacherDashboardProps {
   isAdmin: boolean;
   user: FirebaseUser | null;
   totalStudents: number;
-  handleLogin: () => Promise<void>;
+  handleLogin: () => Promise<boolean>;
+  handleLogout: () => Promise<void>;
 }
 
-export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ isAdmin, user, totalStudents, handleLogin }) => {
+export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ isAdmin, user, totalStudents, handleLogin, handleLogout }) => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {!isAdmin ? (
-        <div className="bg-rose-50 p-10 rounded-[40px] border border-rose-100 text-center space-y-4">
+        <div className="bg-rose-50 p-10 rounded-[40px] border border-rose-100 text-center space-y-6">
           <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm">
             <Settings className="w-10 h-10 text-rose-500" />
           </div>
-          <h2 className="text-2xl font-bold text-rose-800">Quyền truy cập bị từ chối</h2>
-          <p className="text-rose-600 max-w-md mx-auto">Chỉ giáo viên mới có quyền truy cập vào bảng điều khiển này. Vui lòng đăng nhập bằng tài khoản giáo viên.</p>
-          {!user && (
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold text-rose-800">Quyền truy cập bị từ chối</h2>
+            <p className="text-rose-600 max-w-md mx-auto">Chỉ giáo viên mới có quyền truy cập vào bảng điều khiển này.</p>
+          </div>
+          
+          {user ? (
+            <div className="bg-white/50 p-6 rounded-3xl border border-rose-100 max-w-sm mx-auto space-y-4">
+              <p className="text-sm text-rose-800">
+                Bạn đang đăng nhập bằng:<br/>
+                <span className="font-bold">{user.email}</span>
+              </p>
+              <button 
+                onClick={handleLogout}
+                className="w-full px-6 py-3 bg-stone-100 text-stone-600 rounded-2xl font-bold hover:bg-stone-200 transition-all"
+              >
+                Đăng xuất & Đăng nhập lại
+              </button>
+            </div>
+          ) : (
             <button 
               onClick={handleLogin}
               className="px-8 py-3 bg-rose-500 text-white rounded-2xl font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-200"
             >
-              Đăng nhập ngay
+              Đăng nhập bằng tài khoản giáo viên
             </button>
           )}
         </div>

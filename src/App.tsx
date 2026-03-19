@@ -163,10 +163,13 @@ function App() {
         try {
           const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
           const isAdminRole = userDoc.exists() && userDoc.data()?.role === 'admin';
-          const isDefaultAdmin = currentUser.email === "vtdinhdv@gmail.com" && currentUser.emailVerified;
-          setIsAdmin(isAdminRole || isDefaultAdmin);
+          const isvtdinh = currentUser.email === "vtdinhdv@gmail.com" && currentUser.emailVerified;
+          const isphong = currentUser.email === "vubaphong@gmail.com" && currentUser.emailVerified;
+          
+          setIsAdmin(isAdminRole || isvtdinh || isphong);
         } catch (error) {
           console.error("Error checking admin status:", error);
+          setIsAdmin(currentUser.email === "vtdinhdv@gmail.com" || currentUser.email === "vubaphong@gmail.com");
         }
       } else {
         setIsAdmin(false);
@@ -391,9 +394,16 @@ function App() {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (error) {
+      // Force account selection to avoid auto-login with wrong account
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+      return !!result.user;
+    } catch (error: any) {
       console.error("Login failed:", error);
+      if (error.code !== 'auth/popup-closed-by-user') {
+        alert("Đăng nhập thất bại: " + (error.message || "Vui lòng thử lại"));
+      }
+      return false;
     }
   };
 
@@ -420,6 +430,18 @@ function App() {
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `students/${id}`);
       }
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      setStudentId('');
+      setStudentClass('');
+      localStorage.removeItem('student_id');
+      localStorage.removeItem('student_class');
+    } catch (error) {
+      console.error("Logout failed:", error);
     }
   };
 
@@ -673,7 +695,13 @@ function App() {
                 </div>
               </div>
             ) : (
-              <TeacherDashboard isAdmin={isAdmin} user={user} totalStudents={totalStudents} handleLogin={handleLogin} />
+              <TeacherDashboard 
+                isAdmin={isAdmin} 
+                user={user} 
+                totalStudents={totalStudents} 
+                handleLogin={handleLogin} 
+                handleLogout={handleLogout}
+              />
             )}
           </div>
         </main>
