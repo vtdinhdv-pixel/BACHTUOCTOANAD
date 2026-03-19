@@ -400,7 +400,9 @@ function App() {
       return !!result.user;
     } catch (error: any) {
       console.error("Login failed:", error);
-      if (error.code !== 'auth/popup-closed-by-user') {
+      if (error.code === 'auth/unauthorized-domain') {
+        alert("Lỗi: Tên miền này chưa được cấp phép trong Firebase Console. \n\nVui lòng thêm 'bachtuoctoanad-8xpx.vercel.app' vào danh sách 'Authorized domains' trong cài đặt Firebase Authentication.");
+      } else if (error.code !== 'auth/popup-closed-by-user') {
         alert("Đăng nhập thất bại: " + (error.message || "Vui lòng thử lại"));
       }
       return false;
