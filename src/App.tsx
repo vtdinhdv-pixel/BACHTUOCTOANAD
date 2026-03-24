@@ -1,958 +1,483 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useState, useEffect, Component, ErrorInfo, ReactNode } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Plus, LogIn, LogOut } from "lucide-react";
+import OctopusHeader from "./components/OctopusHeader";
+import ChatInterface from "./components/ChatInterface";
+import TeacherDashboard from "./components/TeacherDashboard";
 import { 
-  Send, Camera, Sparkles, Trophy, BookOpen, MessageCircle, 
-  RefreshCw, ChevronRight, FileText, Share2, Settings, 
-  Moon, Smile, Zap, Infinity, Gamepad2, BarChart3, PenLine, 
-  LayoutGrid, GraduationCap, Plus, Image as ImageIcon, FileUp,
-  Lightbulb, Search, HelpCircle, CheckCircle2, XCircle, Info, User, Star
-} from 'lucide-react';
-import Markdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import remarkGfm from 'remark-gfm';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
-import { getMathGuidance, AIResponse, MathStep } from './services/aiService';
-import { exportToDocx } from './services/exportService';
-import { cn } from './lib/utils';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { TeacherDashboard } from './components/TeacherDashboard';
-import { Sidebar } from './components/Sidebar';
-import { 
-  db, auth, handleFirestoreError, OperationType 
-} from './firebase';
-import avatar from './assets/octopus.png';
-import { 
-  collection, doc, setDoc, getDocs, onSnapshot, 
-  serverTimestamp, query, where, getDoc,
-  getCountFromServer
-} from 'firebase/firestore';
-import { 
-  onAuthStateChanged, signInWithPopup, GoogleAuthProvider, User as FirebaseUser 
-} from 'firebase/auth';
+  auth, 
+  db, 
+  googleProvider, 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  serverTimestamp, 
+  collection, 
+  onSnapshot, 
+  query, 
+  where,
+  updateDoc,
+  orderBy, 
+  limit,
+  User,
+  handleFirestoreError,
+  OperationType
+} from "./firebase";
 
+// Error Boundary Component
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean, errorInfo: string }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, errorInfo: "" };
+  }
 
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, errorInfo: error.message || String(error) };
+  }
 
-interface Message {
-  id: string;
-  role: 'user' | 'model';
-  content: string;
-  step?: MathStep;
-  isComplete?: boolean;
-  finalFeedback?: { isCorrect: boolean; message: string; selectedOption: number };
-  imageUrl?: string;
-}
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
 
-export default function AppWithErrorBoundary() {
-  return (
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  );
-}
-
-function App() {
-  const [view, setView] = useState<'student' | 'teacher'>('student');
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [xp, setXp] = useState(0);
-  const [level, setLevel] = useState(1);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [feedback, setFeedback] = useState<{ isCorrect: boolean; message: string } | null>(null);
-  const [showUploadMenu, setShowUploadMenu] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [showInfoModal, setShowInfoModal] = useState(false);
-  const [studentId, setStudentId] = useState<string>('');
-  const [studentClass, setStudentClass] = useState<string>('');
-  const [tempId, setTempId] = useState('');
-  const [tempClass, setTempClass] = useState('');
-  const [lastXpGain, setLastXpGain] = useState<number | null>(null);
-  const [weeklyXp, setWeeklyXp] = useState(0);
-  const [lastResetDate, setLastResetDate] = useState<string>('');
-  
-  // Firebase State
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [totalStudents, setTotalStudents] = useState<number>(0);
-  const [isAdmin, setIsAdmin] = useState(false);
-  
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const savedXp = localStorage.getItem('math_xp');
-    if (savedXp) {
-      const xpVal = parseInt(savedXp);
-      setXp(xpVal);
-      setLevel(Math.floor(xpVal / 100) + 1);
-    }
-
-    const savedId = localStorage.getItem('student_id');
-    const savedClass = localStorage.getItem('student_class');
-    if (savedId) {
-      setStudentId(savedId);
-      setTempId(savedId);
-    }
-    if (savedClass) {
-      setStudentClass(savedClass);
-      setTempClass(savedClass);
-    }
-
-    // Weekly XP reset logic
-    const savedWeeklyXp = localStorage.getItem('math_weekly_xp');
-    const savedResetDate = localStorage.getItem('math_last_reset');
-    const now = new Date();
-    const currentWeekStart = new Date(now.setDate(now.getDate() - now.getDay())).toDateString();
-
-    if (savedResetDate !== currentWeekStart) {
-      setWeeklyXp(0);
-      setLastResetDate(currentWeekStart);
-      localStorage.setItem('math_weekly_xp', '0');
-      localStorage.setItem('math_last_reset', currentWeekStart);
-    } else {
-      if (savedWeeklyXp) setWeeklyXp(parseInt(savedWeeklyXp));
-      setLastResetDate(savedResetDate);
-    }
-    
-    // Initial greeting or load from localStorage
-    const savedMessages = localStorage.getItem('math_messages');
-    if (savedMessages) {
+  render() {
+    if (this.state.hasError) {
+      let displayMessage = "Đã có lỗi xảy ra. Vui lòng tải lại trang.";
       try {
-        setMessages(JSON.parse(savedMessages));
+        const parsed = JSON.parse(this.state.errorInfo);
+        if (parsed.error && parsed.error.includes("insufficient permissions")) {
+          displayMessage = "Bạn không có quyền thực hiện thao tác này.";
+        }
       } catch (e) {
-        console.error('Failed to parse saved messages', e);
-        const initialGreeting: Message[] = [{
-          id: '1',
-          role: 'model',
-          content: 'Chào bạn! Mình là Bạch Tuộc AD vừa trồi lên từ đại dương tri thức đây! 🐙🌊 Bạn đang gặp "sóng gió" với bài tập Toán hay có tâm sự gì muốn trút bỏ không? Đừng để kiến thức trôi dạt nhé, hãy gửi ngay vào đây, mình sẽ dùng 8 vòi giải quyết giúp bạn trong một nốt nhạc! 🌊✨'
-        }];
-        setMessages(initialGreeting);
+        // Not a JSON error
       }
-    } else {
-      const initialGreeting: Message[] = [{
-        id: '1',
-        role: 'model',
-        content: 'Chào bạn! Mình là Bạch Tuộc AD vừa trồi lên từ đại dương tri thức đây! 🐙🌊 Bạn đang gặp "sóng gió" với bài tập Toán hay có tâm sự gì muốn trút bỏ không? Đừng để kiến thức trôi dạt nhé, hãy gửi ngay vào đây, mình sẽ dùng 8 vòi giải quyết giúp bạn trong một nốt nhạc! 🌊✨'
-      }];
-      setMessages(initialGreeting);
-    }
-  }, []);
 
-  useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem('math_messages', JSON.stringify(messages));
-      if (studentId && auth.currentUser) {
-        setDoc(doc(db, 'students', studentId, 'progress', 'data'), {
-          messages: messages,
-          lastUpdated: serverTimestamp()
-        }, { merge: true }).catch(console.error);
-      }
+      return (
+        <div className="flex flex-col items-center justify-center h-screen bg-gray-50 p-6 text-center">
+          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
+            <Plus className="rotate-45" size={32} />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Rất tiếc!</h2>
+          <p className="text-gray-600 mb-6">{displayMessage}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-colors shadow-lg"
+          >
+            Tải lại trang
+          </button>
+        </div>
+      );
     }
-  }, [messages, studentId]);
 
-  // Firebase Auth Listener
+    return this.props.children;
+  }
+}
+
+export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  
+  const [isTeacherDashboardOpen, setIsTeacherDashboardOpen] = useState(false);
+  const [isTeacherAuthenticated, setIsTeacherAuthenticated] = useState(false);
+  const [isTeacherLoginOpen, setIsTeacherLoginOpen] = useState(false);
+  const [teacherPassword, setTeacherPassword] = useState("");
+  const [loginError, setLoginError] = useState(false);
+  const [isConfirmNewChatOpen, setIsConfirmNewChatOpen] = useState(false);
+  const [lastTeacherResponse, setLastTeacherResponse] = useState<{content: string, timestamp: number} | null>(null);
+  const [chatSessionId, setChatSessionId] = useState(Date.now().toString());
+
+  const [teacherStats, setTeacherStats] = useState({
+    studentCount: 0,
+    questions: [] as string[],
+    topicData: [] as { topic: string; count: number }[],
+    teacherRequests: [] as { id: string; content: string; timestamp: any; studentName?: string; status?: string }[],
+  });
+
+  // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      setIsAuthReady(true);
-      
-      if (currentUser) {
-        // Check if admin
-        try {
-          const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-          const isAdminRole = userDoc.exists() && userDoc.data()?.role === 'admin';
-          const isvtdinh = currentUser.email === "vtdinhdv@gmail.com" && currentUser.emailVerified;
-          const isphong = currentUser.email === "vubaphong@gmail.com" && currentUser.emailVerified;
-          
-          setIsAdmin(isAdminRole || isvtdinh || isphong);
-        } catch (error) {
-          console.error("Error checking admin status:", error);
-          setIsAdmin(currentUser.email === "vtdinhdv@gmail.com" || currentUser.email === "vubaphong@gmail.com");
+      try {
+        setUser(currentUser);
+        if (currentUser) {
+          // Check/Create user profile
+          const userDocRef = doc(db, "users", currentUser.uid);
+          try {
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists()) {
+              setUserRole(userDoc.data().role);
+            } else {
+              // Default to student
+              const newProfile = {
+                uid: currentUser.uid,
+                displayName: currentUser.displayName,
+                email: currentUser.email,
+                photoURL: currentUser.photoURL,
+                role: "student",
+                createdAt: serverTimestamp()
+              };
+              await setDoc(userDocRef, newProfile);
+              setUserRole("student");
+            }
+          } catch (error) {
+            console.error("Error checking user profile:", error);
+          }
+        } else {
+          setUserRole(null);
+          setIsTeacherAuthenticated(false);
         }
-      } else {
-        setIsAdmin(false);
+      } finally {
+        setIsAuthReady(true);
       }
     });
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
-  // Sync Progress Listener
+  // Teacher Data Listener
   useEffect(() => {
-    if (user && studentId) {
-      const fetchProgress = async () => {
-        try {
-          const progressDoc = await getDoc(doc(db, 'students', studentId, 'progress', 'data'));
-          if (progressDoc.exists()) {
-            const data = progressDoc.data();
-            if (data.xp !== undefined) {
-              setXp(data.xp);
-              setLevel(data.level || Math.floor(data.xp / 100) + 1);
-            }
-            if (data.weeklyXp !== undefined) setWeeklyXp(data.weeklyXp);
-            if (data.messages && data.messages.length > 0) {
-              setMessages(data.messages);
-            }
-          }
-        } catch(e) { console.error(e); }
-      };
-      fetchProgress();
-    }
-  }, [user, studentId]);
+    if (!isAuthReady || !user || (userRole !== "teacher" && userRole !== "admin" && !isTeacherAuthenticated)) return;
 
-  // Fetch Total Students for Teacher view
-  useEffect(() => {
-    if (view === 'teacher' && isAdmin) {
-      const fetchCount = async () => {
-        try {
-          const coll = collection(db, 'students');
-          const snapshot = await getCountFromServer(coll);
-          setTotalStudents(snapshot.data().count);
-        } catch (error) {
-          handleFirestoreError(error, OperationType.GET, 'students');
-        }
-      };
-      fetchCount();
-      
-      // Real-time listener for students
-      const unsubscribe = onSnapshot(collection(db, 'students'), (snapshot) => {
-        setTotalStudents(snapshot.size);
-      }, (error) => {
-        handleFirestoreError(error, OperationType.GET, 'students');
-      });
-      
-      return () => unsubscribe();
-    }
-  }, [view, isAdmin]);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, feedback, view]);
-
-  const addXp = (amount: number) => {
-    const newXp = Math.max(0, xp + amount);
-    setXp(newXp);
-    setLevel(Math.floor(newXp / 100) + 1);
-    localStorage.setItem('math_xp', newXp.toString());
-    
-    // Update weekly XP (capped at 100 for reward calculation)
-    const newWeeklyXp = Math.max(0, Math.min(100, weeklyXp + amount));
-    setWeeklyXp(newWeeklyXp);
-    localStorage.setItem('math_weekly_xp', newWeeklyXp.toString());
-
-    setLastXpGain(amount);
-    setTimeout(() => setLastXpGain(null), 2000);
-
-    // Sync to Firebase
-    if (studentId && auth.currentUser) {
-      setDoc(doc(db, 'students', studentId, 'progress', 'data'), {
-        xp: newXp,
-        level: Math.floor(newXp / 100) + 1,
-        weeklyXp: newWeeklyXp,
-        lastUpdated: serverTimestamp()
-      }, { merge: true }).catch(console.error);
-    }
-  };
-
-  const handleSend = async (text: string = input, file?: File) => {
-    if (!text.trim() && !file && isLoading) return;
-    setIsLoading(true);
-
-    let imageBase64: string | undefined;
-    let fullBase64: string | undefined;
-    if (file) {
-      fullBase64 = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          resolve(reader.result as string);
-        };
-        reader.readAsDataURL(file);
-      });
-      imageBase64 = fullBase64.split(',')[1];
-    }
-
-    const isImage = file?.type.startsWith('image/');
-    const userMsg: Message = { 
-      id: Date.now().toString(), 
-      role: 'user', 
-      content: text + (file && !isImage ? `\n\n[Đã đính kèm: ${file.name}]` : ''),
-      ...(isImage && fullBase64 ? { imageUrl: fullBase64 } : {})
-    };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setFeedback(null);
-    setSelectedFile(null);
+    let unsubscribeRequests: (() => void) | undefined;
+    let unsubscribeStudents: (() => void) | undefined;
 
     try {
-      const history = messages.map(m => ({ role: m.role, content: m.content }));
-      // Pass level to AI for intelligent response
-      const response = await getMathGuidance(text || "Giải bài tập trong file đính kèm", history, level, imageBase64);
-      
-      const modelMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'model',
-        content: response.step?.content || 'Hãy cùng xem bài này nhé.',
-        step: response.step,
-        isComplete: response.isComplete
-      };
-      
-      setMessages(prev => [...prev, modelMsg]);
+      // Listen to teacher requests
+      const requestsQuery = query(collection(db, "teacherRequests"), orderBy("timestamp", "desc"), limit(50));
+      unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
+        const requests = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as any[];
+        
+        setTeacherStats(prev => ({
+          ...prev,
+          teacherRequests: requests
+        }));
+      }, (error) => {
+        console.error("Teacher requests error:", error);
+      });
+
+      // Listen to student count
+      const studentsQuery = query(collection(db, "users"), where("role", "==", "student"));
+      unsubscribeStudents = onSnapshot(studentsQuery, (snapshot) => {
+        setTeacherStats(prev => ({
+          ...prev,
+          studentCount: snapshot.size
+        }));
+      }, (error) => {
+        console.error("Student count error:", error);
+      });
     } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'model',
-        content: 'Hệ thống đang bận một chút, em thử lại sau nhé!'
-      }]);
-    } finally {
-      setIsLoading(false);
+      console.error("Teacher data listener error:", error);
     }
-  };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'file') => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setShowUploadMenu(false);
-      // Automatically send or wait for user to type? 
-      // Let's just set it and let them send with text if they want.
-    }
-  };
-
-  const handleOptionSelect = (step: MathStep, optionIndex: number) => {
-    if (selectedOption !== null) return;
-    
-    setSelectedOption(optionIndex);
-    const correctIndex = Number(step.correctOptionIndex);
-    const isCorrect = optionIndex === correctIndex;
-    
-    if (isCorrect) {
-      const fb = { 
-        isCorrect: true, 
-        message: `Chúc mừng em! 🌟 Bạch Tuộc AD rất tự hào về em.\n\n**Giải thích chi tiết:** ${step.explanation || 'Đáp án hoàn toàn chính xác.'}` 
-      };
-      setFeedback(fb);
-      addXp(5);
-      
-      // Save final feedback to message to persist it
-      setMessages(prev => {
-        const newMessages = [...prev];
-        const lastMsg = newMessages[newMessages.length - 1];
-        if (lastMsg.role === 'model') {
-          lastMsg.finalFeedback = { ...fb, selectedOption: optionIndex };
-        }
-        return newMessages;
-      });
-
-      const currentMsg = messages[messages.length - 1];
-      if (currentMsg.isComplete) {
-        addXp(50); // Bonus for completion
-      }
-    } else {
-      setFeedback({ 
-        isCorrect: false, 
-        message: 'Chưa chính xác rồi! Đừng nản lòng nhé, em thử suy nghĩ lại một chút nào. Bạch Tuộc AD đang chuẩn bị gợi ý cho em đây! 💪🐙' 
-      });
-      addXp(-3);
-      setTimeout(() => {
-        setSelectedOption(null);
-        setFeedback(null);
-        // Automatically ask for a hint if wrong
-        handleSend(`Bạch Tuộc AD ơi, em đã chọn đáp án "${step.options?.[optionIndex]}" nhưng chưa đúng. Anh cho em một gợi ý khéo léo và yêu cầu em trả lời lại nhé!`);
-      }, 3000);
-    }
-  };
-
-  const handleContinue = () => {
-    const currentMsg = messages[messages.length - 1];
-    if (currentMsg.isComplete || currentMsg.step?.isTheory) {
-      handleSend("Bạch Tuộc AD ơi, em đã hoàn thành phần lí thuyết này rồi. Anh hãy ra Bài tập 1 để em luyện tập thêm nhé. Em sẽ tự giải và gửi lời giải (bằng chữ hoặc hình ảnh) để anh kiểm tra và chỉ ra kiến thức em đã dùng nhé!");
-    } else {
-      handleSend("Tuyệt vời! Bạch Tuộc AD ơi, hãy dẫn dắt em sang bước tiếp theo nhé.");
-    }
-    setSelectedOption(null);
-    setFeedback(null);
-  };
-
-  const handleClearHistory = () => {
-    if (window.confirm('Bạn có chắc chắn muốn bắt đầu đoạn chat mới không? Lịch sử hiện tại sẽ bị xóa.')) {
-      const initialGreeting: Message[] = [{
-        id: '1',
-        role: 'model',
-        content: 'Chào bạn! Mình là Bạch Tuộc AD vừa trồi lên từ đại dương tri thức đây! 🐙🌊 Bạn đang gặp "sóng gió" với bài tập Toán hay có tâm sự gì muốn trút bỏ không? Đừng để kiến thức trôi dạt nhé, hãy gửi ngay vào đây, mình sẽ dùng 8 vòi giải quyết giúp bạn trong một nốt nhạc! 🌊✨'
-      }];
-      setMessages(initialGreeting);
-      localStorage.setItem('math_messages', JSON.stringify(initialGreeting));
-      setSelectedOption(null);
-      setFeedback(null);
-    }
-  };
+    return () => {
+      if (unsubscribeRequests) unsubscribeRequests();
+      if (unsubscribeStudents) unsubscribeStudents();
+    };
+  }, [isAuthReady, user, userRole, isTeacherAuthenticated]);
 
   const handleLogin = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      // Force account selection to avoid auto-login with wrong account
-      provider.setCustomParameters({ prompt: 'select_account' });
-      const result = await signInWithPopup(auth, provider);
-      return !!result.user;
-    } catch (error: any) {
-      console.error("Login failed:", error);
-      if (error.code === 'auth/unauthorized-domain') {
-        alert("Lỗi: Tên miền này chưa được cấp phép trong Firebase Console. \n\nVui lòng thêm 'bachtuoctoanad-8xpx.vercel.app' vào danh sách 'Authorized domains' trong cài đặt Firebase Authentication.");
-      } else if (error.code !== 'auth/popup-closed-by-user') {
-        alert("Đăng nhập thất bại: " + (error.message || "Vui lòng thử lại"));
-      }
-      return false;
-    }
-  };
-
-  const handleRegisterStudent = async (id: string, className: string) => {
-    if (!user) {
-      await handleLogin();
-    }
-    
-    if (auth.currentUser) {
-      try {
-        const studentDoc = doc(db, 'students', id);
-        await setDoc(studentDoc, {
-          id: id,
-          class: className,
-          lastLogin: serverTimestamp(),
-          uid: auth.currentUser.uid
-        }, { merge: true });
-        
-        setStudentId(id);
-        setStudentClass(className);
-        localStorage.setItem('student_id', id);
-        localStorage.setItem('student_class', className);
-        setShowInfoModal(false);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `students/${id}`);
-      }
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login error:", error);
     }
   };
 
   const handleLogout = async () => {
     try {
-      await auth.signOut();
-      setStudentId('');
-      setStudentClass('');
-      localStorage.removeItem('student_id');
-      localStorage.removeItem('student_class');
+      await signOut(auth);
     } catch (error) {
-      console.error("Logout failed:", error);
+      console.error("Logout error:", error);
     }
   };
 
-  const handleCameraClick = () => {
-    alert("Tính năng chụp ảnh đang được phát triển. Em hãy gõ đề bài vào ô chat nhé! 😊");
+  const handleTeacherClick = () => {
+    if (userRole === "teacher" || userRole === "admin" || isTeacherAuthenticated) {
+      setIsTeacherDashboardOpen(true);
+    } else {
+      setIsTeacherLoginOpen(true);
+    }
   };
 
+  const handleTeacherLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (teacherPassword === "giaovien123") {
+      setIsTeacherAuthenticated(true);
+      setIsTeacherLoginOpen(false);
+      setIsTeacherDashboardOpen(true);
+      setLoginError(false);
+      setTeacherPassword("");
+    } else {
+      setLoginError(true);
+    }
+  };
 
+  // Helper to categorize questions into topics
+  const getTopicData = (questions: string[]) => {
+    const topics = [
+      { name: "Phân số", keywords: ["phân số", "tử số", "mẫu số", "rút gọn"] },
+      { name: "Số nguyên", keywords: ["số nguyên", "âm", "dương", "tập hợp Z"] },
+      { name: "Hình học", keywords: ["hình", "tam giác", "góc", "đường thẳng", "điểm"] },
+      { name: "Số thập phân", keywords: ["thập phân", "phẩy"] },
+      { name: "Đại số", keywords: ["x", "y", "biểu thức", "tính giá trị"] },
+    ];
 
+    const counts: { [key: string]: number } = {
+      "Phân số": 0,
+      "Số nguyên": 0,
+      "Hình học": 0,
+      "Số thập phân": 0,
+      "Đại số": 0,
+      "Khác": 0,
+    };
 
+    questions.forEach((q) => {
+      let found = false;
+      const lowerQ = q.toLowerCase();
+      for (const topic of topics) {
+        if (topic.keywords.some((k) => lowerQ.includes(k))) {
+          counts[topic.name]++;
+          found = true;
+          break;
+        }
+      }
+      if (!found) counts["Khác"]++;
+    });
+
+    return Object.keys(counts).map((topic) => ({
+      topic,
+      count: counts[topic],
+    }));
+  };
+
+  const handleNewQuestion = (question: string) => {
+    setTeacherStats((prev) => {
+      const newQuestions = [question, ...prev.questions].slice(0, 20);
+      return {
+        ...prev,
+        questions: newQuestions,
+        topicData: getTopicData(newQuestions),
+      };
+    });
+  };
+
+  const handleTeacherRequest = async (content: string) => {
+    if (!user) return;
+    try {
+      await setDoc(doc(collection(db, "teacherRequests")), {
+        studentUid: user.uid,
+        studentName: user.displayName || "Học sinh",
+        content,
+        status: "pending",
+        timestamp: serverTimestamp()
+      });
+    } catch (error) {
+      console.error("Teacher request error:", error);
+    }
+  };
+
+  const handleTeacherRespond = async (requestId: string, response: string) => {
+    setLastTeacherResponse({ content: response, timestamp: Date.now() });
+    try {
+      await updateDoc(doc(db, "teacherRequests", requestId), {
+        status: "responded",
+        response: response
+      });
+    } catch (error) {
+      console.error("Teacher respond error:", error);
+    }
+  };
+
+  const handleNewChat = () => {
+    setIsConfirmNewChatOpen(true);
+  };
+
+  const confirmNewChat = () => {
+    setChatSessionId(Date.now().toString());
+    setIsConfirmNewChatOpen(false);
+  };
+
+  if (!isAuthReady) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-blue-50">
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full"
+        />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-blue-400 to-indigo-600 p-6">
+        <motion.div 
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="bg-white p-8 rounded-[40px] shadow-2xl max-w-md w-full text-center"
+        >
+          <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+             <svg viewBox="0 0 200 200" className="w-16 h-16">
+              <circle cx="100" cy="100" r="80" fill="#74b9ff" />
+              <circle cx="75" cy="85" r="10" fill="white" />
+              <circle cx="125" cy="85" r="10" fill="white" />
+              <path d="M80 130 Q100 150 120 130" stroke="white" strokeWidth="8" fill="none" strokeLinecap="round" />
+            </svg>
+          </div>
+          <h2 className="text-3xl font-serif font-bold text-gray-800 mb-2 uppercase">BẠCH TUỘC TOÁN VUI</h2>
+          <p className="text-gray-500 mb-8">Chào mừng em đến với thế giới Toán học! Hãy đăng nhập để bắt đầu học nhé.</p>
+          
+          <button 
+            onClick={handleLogin}
+            className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-white border-2 border-gray-100 text-gray-700 font-bold rounded-2xl hover:bg-gray-50 transition-all shadow-lg active:scale-95"
+          >
+            <LogIn size={20} className="text-blue-500" />
+            Đăng nhập với Google
+          </button>
+          
+          <p className="mt-8 text-xs text-gray-400 italic">
+            Học toán lớp 6 thật vui cùng Bạch Tuộc Trạng Nguyên!
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex min-h-screen bg-[#E6F4F1] text-[#2D2D2D] font-sans selection:bg-emerald-100 overflow-hidden">
-      {/* Left Frame: Sidebar */}
-      {view === 'student' && (
-        <aside className="flex flex-col w-[350px] p-6 overflow-y-auto shrink-0 border-r border-stone-100/50">
-          <Sidebar studentId={studentId} studentClass={studentClass} level={level} xp={xp} weeklyXp={weeklyXp} handleClearHistory={handleClearHistory} />
-        </aside>
-      )}
-
-      {/* Right Frame: Main Content */}
-      <div className={cn(
-        "flex-1 flex flex-col bg-white shadow-2xl transition-all duration-500",
-        view === 'student' ? "lg:rounded-l-[48px]" : ""
-      )}>
-        {/* Header (Inside Right Frame) */}
-        <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100 px-8 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-stone-100 p-0 overflow-hidden border border-stone-100 shadow-sm">
-                <img src={avatar} alt="Avatar" className="w-full h-full object-cover scale-110" />
-              </div>
-              <div>
-                <h1 className="font-bold text-stone-900 text-base leading-tight">Bạch Tuộc AD</h1>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Đang hoạt động</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-6">
-              {/* Role pill switcher */}
-              <div className="bg-stone-50 p-1.5 rounded-full flex gap-1 border border-stone-100">
-                <button
-                  onClick={() => setView('student')}
-                  className={cn(
-                    "px-6 py-2 rounded-full text-xs font-bold transition-all",
-                    view === 'student' ? "bg-white text-emerald-600 shadow-sm ring-1 ring-stone-100" : "text-stone-400 hover:text-stone-600"
-                  )}
-                >
-                  Học sinh
-                </button>
-                <button
-                  onClick={() => setView('teacher')}
-                  className={cn(
-                    "px-6 py-2 rounded-full text-xs font-bold transition-all",
-                    view === 'teacher' ? "bg-white text-blue-600 shadow-sm ring-1 ring-stone-100" : "text-stone-400 hover:text-stone-600"
-                  )}
-                >
-                  Giáo viên
-                </button>
-              </div>
-
-              <button 
-                onClick={async () => {
-                  if (!user) {
-                    await handleLogin();
-                    // After login, show modal if studentId is missing
-                    if (!studentId) setShowInfoModal(true);
-                  } else {
-                    setTempId(studentId);
-                    setTempClass(studentClass);
-                    setShowInfoModal(true);
-                  }
-                }}
-                className="flex items-center gap-2 px-5 py-2.5 bg-stone-50 hover:bg-stone-100 text-stone-600 border border-stone-100 rounded-full font-bold transition-all text-xs"
-              >
-                <User className="w-4 h-4" />
-                {studentId ? `ID: ${studentId}` : (user ? 'Thông tin' : 'Đăng nhập')}
-              </button>
-
-              <div className="flex items-center gap-2 text-stone-400">
-                <button 
-                  onClick={() => exportToDocx(messages)}
-                  className="p-2 hover:bg-stone-50 rounded-full transition-colors group" 
-                  title="Tải Word"
-                >
-                  <FileText className="w-4.5 h-4.5 text-blue-400 group-hover:text-blue-500" />
-                </button>
-                <button className="p-2 hover:bg-stone-50 rounded-full transition-colors"><Share2 className="w-4.5 h-4.5" /></button>
-                <button className="p-2 hover:bg-stone-50 rounded-full transition-colors"><Settings className="w-4.5 h-4.5" /></button>
-                <button className="p-2 hover:bg-stone-50 rounded-full transition-colors"><Moon className="w-4.5 h-4.5" /></button>
-              </div>
-            </div>
+    <ErrorBoundary>
+      <div className="flex flex-col h-screen bg-gray-100 overflow-hidden">
+        <OctopusHeader 
+          onTeacherClick={handleTeacherClick} 
+          onNewChat={handleNewChat}
+          requestCount={teacherStats.teacherRequests.filter(r => r.status === "pending").length}
+        />
+        
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+          <div className="hidden sm:flex flex-col items-end mr-2">
+            <span className="text-xs font-bold text-gray-700">{user.displayName}</span>
+            <span className="text-[10px] text-gray-400 capitalize">{userRole}</span>
           </div>
-        </header>
-
-        <main className="flex-1 overflow-y-auto scroll-smooth relative" ref={scrollRef}>
-          <div className="max-w-5xl mx-auto px-8 py-10">
-            {view === 'student' ? (
-              <div className="space-y-8">
-                <div className="space-y-8 pb-32">
-                  <AnimatePresence initial={false}>
-                    {messages.map((msg, idx) => (
-                      <motion.div
-                        key={msg.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={cn(
-                          "flex gap-4",
-                          msg.role === 'user' ? "flex-row-reverse" : "flex-row"
-                        )}
-                      >
-                        <div className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden border border-stone-100 shadow-sm",
-                          msg.role === 'user' ? "bg-stone-50" : "bg-white"
-                        )}>
-                          {msg.role === 'user' 
-                            ? <User className="w-5 h-5 text-stone-400" /> 
-                            : <img src={avatar} alt="Bot" className="w-full h-full object-cover scale-110" />
-                          }
-                        </div>
-                        
-                        <div className={cn(
-                          "flex flex-col gap-2",
-                          msg.role === 'user' ? "items-end" : "items-start"
-                        )}>
-                          <div className={cn(
-                            "rounded-[32px] px-8 py-5 shadow-sm max-w-[90%]",
-                            msg.role === 'user' 
-                              ? "bg-white text-stone-800 rounded-tr-none border border-stone-100" 
-                              : "bg-white border border-stone-100 rounded-tl-none"
-                          )}>
-                            <div className="prose prose-sm prose-stone max-w-none text-[16px] leading-relaxed">
-                              {msg.imageUrl && (
-                                <div className="mb-4 rounded-xl overflow-hidden border border-stone-200 shadow-sm">
-                                  <img src={msg.imageUrl} alt="Đính kèm" className="max-w-[200px] h-auto rounded-lg" />
-                                </div>
-                              )}
-                              <Markdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>{msg.content}</Markdown>
-                            </div>
-
-                            {/* Interactive Step Options */}
-                            {msg.role === 'model' && idx === messages.length - 1 && msg.step && msg.step.options && msg.step.options.length > 0 && (
-                              <div className="mt-6 space-y-4 border-t border-stone-50 pt-6">
-                                <motion.div 
-                                  initial={{ opacity: 0, y: 10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  className="grid grid-cols-1 gap-3"
-                                >
-                                  {msg.step.options.map((opt, oIdx) => {
-                                    const isSelected = selectedOption === oIdx || msg.finalFeedback?.selectedOption === oIdx;
-                                    const isCorrect = oIdx === Number(msg.step!.correctOptionIndex);
-                                    const anySelected = selectedOption !== null || !!msg.finalFeedback;
-                                    
-                                    return (
-                                      <button
-                                        key={oIdx}
-                                        onClick={() => handleOptionSelect(msg.step!, oIdx)}
-                                        disabled={anySelected || msg.id !== messages[messages.length - 1].id}
-                                        className={cn(
-                                          "text-left px-6 py-4 rounded-2xl border transition-all duration-300 text-[15px] group flex items-center",
-                                          isSelected
-                                            ? (isCorrect ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700")
-                                            : (anySelected && isCorrect ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-white border-stone-100 hover:border-emerald-300 hover:shadow-md hover:-translate-y-0.5")
-                                        )}
-                                      >
-                                        <span className={cn(
-                                          "inline-block w-8 h-8 rounded-full border text-center text-xs font-bold leading-8 mr-4 transition-colors shrink-0",
-                                          isSelected
-                                            ? "bg-white border-transparent" 
-                                            : "bg-stone-50 border-stone-200 group-hover:bg-emerald-100 group-hover:border-emerald-200"
-                                        )}>
-                                          {String.fromCharCode(65 + oIdx)}
-                                        </span>
-                                        <span className="flex-1">
-                                          <Markdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>{opt}</Markdown>
-                                        </span>
-                                        {anySelected && (
-                                          isCorrect ? (
-                                            <CheckCircle2 className="w-5 h-5 text-emerald-500 ml-2 shrink-0" />
-                                          ) : (
-                                            isSelected && <XCircle className="w-5 h-5 text-rose-500 ml-2 shrink-0" />
-                                          )
-                                        )}
-                                      </button>
-                                    );
-                                  })}
-                                </motion.div>
-
-                                {/* Feedback Display */}
-                                {(feedback || msg.finalFeedback) && (
-                                  <motion.div
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className={cn(
-                                      "p-5 rounded-2xl text-sm border",
-                                      (feedback?.isCorrect || msg.finalFeedback?.isCorrect) ? "bg-emerald-50 border-emerald-100 text-emerald-800" : "bg-rose-50 border-rose-100 text-rose-800"
-                                    )}
-                                  >
-                                    <div className="flex items-center gap-2 mb-2 font-bold">
-                                      {(feedback?.isCorrect || msg.finalFeedback?.isCorrect) ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <XCircle className="w-5 h-5 text-rose-500" />}
-                                      <span>{(feedback?.isCorrect || msg.finalFeedback?.isCorrect) ? "Tuyệt vời! Đáp án chính xác:" : "Cố gắng lên! Đáp án chưa đúng:"}</span>
-                                    </div>
-                                    <div className="prose prose-sm max-w-none">
-                                      <Markdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
-                                        {(feedback?.isCorrect || msg.finalFeedback?.isCorrect) 
-                                          ? `**${String.fromCharCode(65 + Number(msg.step.correctOptionIndex))}: ${msg.step.options[Number(msg.step.correctOptionIndex)]}**\n\n${feedback?.message || msg.finalFeedback?.message}`
-                                          : feedback?.message
-                                        }
-                                      </Markdown>
-                                    </div>
-
-                                    {(feedback?.isCorrect || msg.finalFeedback?.isCorrect) && msg.id === messages[messages.length - 1].id && (
-                                      <div className="mt-4 flex justify-end">
-                                        <button
-                                          onClick={handleContinue}
-                                          className="flex items-center gap-2 bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-600 transition-colors shadow-sm"
-                                        >
-                                          {(msg.isComplete || msg.step?.isTheory) ? "Luyện tập thêm" : "Tiếp tục"}
-                                          <ChevronRight className="w-4 h-4" />
-                                        </button>
-                                      </div>
-                                    )}
-                                  </motion.div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <span className="text-[11px] text-stone-400 font-medium px-4">
-                            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-
-                  {isLoading && (
-                    <div className="flex gap-4">
-                      <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center overflow-hidden border border-stone-100 shadow-sm">
-                        <img src={avatar} alt="Bot" className="w-full h-full object-cover scale-110" />
-                      </div>
-                      <div className="bg-white border border-stone-100 rounded-[32px] rounded-tl-none px-8 py-5 shadow-sm flex items-center gap-4">
-                        <RefreshCw className="w-5 h-5 text-emerald-500 animate-spin" />
-                        <span className="text-[15px] text-stone-400 font-medium">Bạch Tuộc AD đang suy nghĩ...</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <TeacherDashboard 
-                isAdmin={isAdmin} 
-                user={user} 
-                totalStudents={totalStudents} 
-                handleLogin={handleLogin} 
-                handleLogout={handleLogout}
-              />
-            )}
-          </div>
-        </main>
-
-        {/* Input Area (Only for Student) */}
-        {view === 'student' && (
-          <div className="bg-white border-t border-stone-100 p-8">
-            <div className="max-w-4xl mx-auto">
-              {selectedFile && (
-                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-between animate-in slide-in-from-bottom-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                      {selectedFile.type.startsWith('image/') ? <ImageIcon className="w-4 h-4 text-emerald-600" /> : <FileUp className="w-4 h-4 text-emerald-600" />}
-                    </div>
-                    <span className="text-sm font-medium text-emerald-700 truncate max-w-[200px]">{selectedFile.name}</span>
-                  </div>
-                  <button onClick={() => setSelectedFile(null)} className="text-emerald-400 hover:text-emerald-600 p-1">
-                    <Plus className="w-4 h-4 rotate-45" />
-                  </button>
-                </div>
-              )}
-              <div className="flex gap-4">
-                <div className="relative">
-                  <button 
-                    onClick={() => setShowUploadMenu(!showUploadMenu)}
-                    className={cn(
-                      "p-5 rounded-2xl transition-all border shadow-sm",
-                      showUploadMenu ? "bg-emerald-600 text-white border-emerald-600" : "bg-stone-50 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 border-stone-100"
-                    )}
-                    title="Thêm tệp"
-                  >
-                    <Plus className={cn("w-7 h-7 transition-transform", showUploadMenu && "rotate-45")} />
-                  </button>
-
-                  <AnimatePresence>
-                    {showUploadMenu && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                        className="absolute bottom-full left-0 mb-4 bg-white rounded-3xl border border-stone-100 shadow-xl p-2 w-48 z-50 overflow-hidden"
-                      >
-                        <button 
-                          onClick={() => imageInputRef.current?.click()}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-stone-50 rounded-2xl transition-colors text-stone-700 font-medium text-sm"
-                        >
-                          <ImageIcon className="w-5 h-5 text-rose-500" />
-                          Tải ảnh lên
-                        </button>
-                        <button 
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-stone-50 rounded-2xl transition-colors text-stone-700 font-medium text-sm"
-                        >
-                          <FileUp className="w-5 h-5 text-blue-500" />
-                          Tải tệp lên
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <input type="file" accept="image/*" className="hidden" ref={imageInputRef} onChange={(e) => handleFileUpload(e, 'image')} />
-                  <input type="file" className="hidden" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'file')} />
-                </div>
-
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend(input, selectedFile || undefined)}
-                    placeholder="Nhập đề bài toán hoặc tải tệp lên..."
-                    className="w-full bg-stone-50 border border-stone-100 rounded-2xl px-8 py-5 pr-16 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all text-[16px] shadow-sm"
-                  />
-                  <button
-                    onClick={() => handleSend(input, selectedFile || undefined)}
-                    disabled={(!input.trim() && !selectedFile) || isLoading}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2.5 text-emerald-600 disabled:text-stone-300 transition-all hover:scale-110"
-                  >
-                    <Send className="w-7 h-7" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      {/* XP Gain Animation */}
-      <AnimatePresence>
-        {lastXpGain !== null && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.5 }}
-            animate={{ opacity: 1, y: -100, scale: 1.5 }}
-            exit={{ opacity: 0 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 z-[200] pointer-events-none"
+          <button 
+            onClick={handleLogout}
+            className="p-2 bg-white/80 backdrop-blur-sm text-gray-500 rounded-full hover:text-red-500 transition-colors shadow-sm"
+            title="Đăng xuất"
           >
-            <div className={cn(
-              "text-white px-6 py-3 rounded-full font-black text-2xl shadow-xl flex items-center gap-2 border-4 border-white",
-              lastXpGain > 0 ? "bg-amber-400" : "bg-red-500"
-            )}>
-              {lastXpGain > 0 ? <Trophy className="w-8 h-8" /> : <XCircle className="w-8 h-8" />}
-              {lastXpGain > 0 ? `+${lastXpGain}` : lastXpGain} XP
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <LogOut size={18} />
+          </button>
+        </div>
 
-      {/* Login/Info Modal */}
-      <AnimatePresence>
-        {showInfoModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 text-[#2D2D2D]">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowInfoModal(false)}
-              className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden"
-            >
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-2xl font-bold text-stone-900">
-                    {studentId ? 'Thông tin học sinh' : 'Đăng nhập học sinh'}
-                  </h3>
-                  <button 
-                    onClick={() => setShowInfoModal(false)}
-                    className="p-2 hover:bg-stone-100 rounded-full transition-colors"
-                  >
-                    <XCircle className="w-6 h-6 text-stone-400" />
-                  </button>
-                </div>
+        <main className="flex-1 overflow-hidden">
+          <ChatInterface 
+            key={chatSessionId}
+            sessionId={chatSessionId}
+            onNewChat={handleNewChat}
+            onMessageSent={handleNewQuestion} 
+            onTeacherRequest={handleTeacherRequest}
+            teacherResponse={lastTeacherResponse}
+            onTeacherResponseHandled={() => setLastTeacherResponse(null)}
+          />
+        </main>
+        
+        <TeacherDashboard 
+          isOpen={isTeacherDashboardOpen} 
+          onClose={() => setIsTeacherDashboardOpen(false)} 
+          onRespond={handleTeacherRespond}
+          stats={teacherStats}
+        />
 
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">Mã học sinh (Dãy số)</label>
-                    <div className="flex items-center gap-4 p-4 bg-stone-50 rounded-2xl border border-stone-100 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:bg-white transition-all">
-                      <User className="w-5 h-5 text-stone-400" />
-                      <input 
-                        type="text" 
-                        placeholder="Nhập mã số học sinh..."
-                        value={tempId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '' || /^\d+$/.test(val)) {
-                            setTempId(val);
-                          }
-                        }}
-                        className="bg-transparent border-none focus:outline-none w-full font-bold text-stone-800 placeholder:text-stone-300"
-                      />
-                    </div>
+        {/* Teacher Login Modal */}
+        <AnimatePresence>
+          {isTeacherLoginOpen && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full"
+              >
+                <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">Xác thực Giáo viên</h3>
+                <form onSubmit={handleTeacherLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+                    <input 
+                      type="password"
+                      value={teacherPassword}
+                      onChange={(e) => setTeacherPassword(e.target.value)}
+                      className={`w-full p-3 border rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-400 ${loginError ? 'border-red-500' : 'border-gray-200'}`}
+                      placeholder="Nhập mật khẩu giáo viên..."
+                      autoFocus
+                    />
+                    {loginError && <p className="text-red-500 text-xs mt-1">Mật khẩu không đúng!</p>}
                   </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">Lớp học</label>
-                    <div className="flex items-center gap-4 p-4 bg-stone-50 rounded-2xl border border-stone-100 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:bg-white transition-all">
-                      <GraduationCap className="w-5 h-5 text-stone-400" />
-                      <input 
-                        type="text" 
-                        placeholder="Ví dụ: 6A1, 6A2..."
-                        value={tempClass}
-                        onChange={(e) => setTempClass(e.target.value)}
-                        className="bg-transparent border-none focus:outline-none w-full font-bold text-stone-800 placeholder:text-stone-300"
-                      />
-                    </div>
-                  </div>
-
-                  {studentId && (
-                    <div className="p-5 bg-emerald-50 rounded-2xl border border-emerald-100 space-y-4">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                          <Trophy className="w-6 h-6 text-emerald-600" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-emerald-600/60 uppercase tracking-wider mb-0.5">Thành tích học tập</p>
-                          <p className="text-emerald-700 font-bold">Level {level} — {xp} XP</p>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
-                          <span>Tiến trình Level {level}</span>
-                          <span>{xp % 100}%</span>
-                        </div>
-                        <div className="h-2 bg-white rounded-full overflow-hidden border border-emerald-100">
-                          <motion.div 
-                            initial={{ width: 0 }}
-                            animate={{ width: `${xp % 100}%` }}
-                            className="h-full bg-emerald-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-emerald-100 flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                            <Star className="w-4 h-4 text-emerald-600" />
-                          </div>
-                          <div>
-                            <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider block">Điểm thưởng tuần</span>
-                            <span className="text-[9px] text-emerald-400 font-medium">Giới hạn 1.00/tuần</span>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-xl font-black text-emerald-600">{(weeklyXp * 0.01).toFixed(2)}</span>
-                          <p className="text-[9px] text-emerald-400 font-medium">100 XP = 1.00</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-3 mt-8">
-                  {studentId && (
-                    <button 
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
                       onClick={() => {
-                        setStudentId('');
-                        setStudentClass('');
-                        setTempId('');
-                        setTempClass('');
-                        localStorage.removeItem('student_id');
-                        localStorage.removeItem('student_class');
-                        setShowInfoModal(false);
+                        setIsTeacherLoginOpen(false);
+                        setLoginError(false);
+                        setTeacherPassword("");
                       }}
-                      className="flex-1 py-4 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-2xl font-bold transition-all"
+                      className="flex-1 py-3 px-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-colors"
                     >
-                      Đăng xuất
+                      Hủy
                     </button>
-                  )}
-                  <button 
-                    onClick={() => {
-                      if (tempId && tempClass) {
-                        handleRegisterStudent(tempId, tempClass);
-                      }
-                    }}
-                    disabled={!tempId || !tempClass}
-                    className="flex-[2] py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-stone-200 text-white rounded-2xl font-bold transition-all shadow-lg shadow-emerald-200 disabled:shadow-none"
+                    <button
+                      type="submit"
+                      className="flex-1 py-3 px-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                    >
+                      Đăng nhập
+                    </button>
+                  </div>
+                </form>
+                <p className="mt-4 text-[10px] text-gray-400 text-center italic">
+                  (Mật khẩu mặc định: giaovien123)
+                </p>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Custom Confirmation Modal */}
+        <AnimatePresence>
+          {isConfirmNewChatOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full text-center"
+              >
+                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Plus size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Bắt đầu Chat mới?</h3>
+                <p className="text-gray-500 text-sm mb-6">
+                  Đoạn hội thoại hiện tại sẽ được kết thúc và làm mới hoàn toàn.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setIsConfirmNewChatOpen(false)}
+                    className="flex-1 py-3 px-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-colors"
                   >
-                    {studentId ? 'Cập nhật' : 'Đăng nhập'}
+                    Hủy bỏ
+                  </button>
+                  <button
+                    onClick={confirmNewChat}
+                    className="flex-1 py-3 px-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+                  >
+                    Đồng ý
                   </button>
                 </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
+    </ErrorBoundary>
+);
 }
